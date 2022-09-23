@@ -61,6 +61,10 @@ fn main() {
 
     let file = File::open(filename).unwrap();
     let file = BufReader::new(file);
+
+    // TODO: minidom needs an xmlns and ssw files don't have one
+    // Swap to https://github.com/RazrFalcon/roxmltree instead (since we're only reading)
+
     let mech_element = Element::from_reader(file).unwrap();
 
     let mut mech = Mech {
@@ -93,6 +97,8 @@ fn main() {
     handle_engine_type(&mut mech);
     handle_gyro_type(&mut mech);
     populate_leg_crits(&mut mech);
+
+    // TODO: hardened armor modification to crit result
 
     let mut deaths = 0;
     for _i in 0..1000000 {
@@ -143,9 +149,13 @@ fn main() {
         }
     }
 
-    let regular_percentage = deaths as f32 / 1000000.0;
-    let floating_percentage = floating_deaths as f32 / 1000000.0;
+    let regular_percentage = deaths as f32 / 1000000.0 * 100.0;
+    let floating_percentage = floating_deaths as f32 / 1000000.0 * 100.0;
 
+    println!(
+        "Regular rules had {} deaths in 1,000,000 runs, floating crits had {} deaths in 1,000,000 runs", 
+        deaths, floating_deaths
+    );
     println!(
         "Regular death percentage {} floating crit death percentage {}",
         regular_percentage, floating_percentage
@@ -153,6 +163,10 @@ fn main() {
 }
 
 fn check_single_crit(location_crits: Vec<Crit>, deaths: &mut i32) {
+    if location_crits.len() < 1 {
+        return;
+    }
+
     let mut rng = rand::thread_rng();
     let chosen_crit = location_crits.choose(&mut rng).unwrap();
     if *chosen_crit == Crit::Ammo || *chosen_crit == Crit::Cockpit {
@@ -161,6 +175,11 @@ fn check_single_crit(location_crits: Vec<Crit>, deaths: &mut i32) {
 }
 
 fn check_double_crit(mut location_crits: Vec<Crit>, deaths: &mut i32) {
+    if location_crits.len() < 2 {
+        check_single_crit(location_crits, deaths);
+        return;
+    }
+
     let mut rng = rand::thread_rng();
     let (i, first_crit) = location_crits
         .iter_mut()
@@ -189,6 +208,11 @@ fn check_double_crit(mut location_crits: Vec<Crit>, deaths: &mut i32) {
 }
 
 fn check_triple_crit(mut location_crits: Vec<Crit>, deaths: &mut i32) {
+    if location_crits.len() < 3 {
+        check_double_crit(location_crits, deaths);
+        return;
+    }
+
     let mut rng = rand::thread_rng();
     let (i, first_crit) = location_crits
         .iter_mut()
@@ -259,7 +283,7 @@ fn handle_cockpit_type(mech: &mut Mech) {
             mech.head_crits.push(Crit::Other);
             mech.head_crits.push(Crit::Other);
         }
-        "Torso Cockpit" => {
+        "Torso-Mounted Cockpit" => {
             mech.ct_crits.push(Crit::Cockpit);
             mech.ct_crits.push(Crit::Other);
             mech.head_crits.push(Crit::Other);
@@ -267,7 +291,7 @@ fn handle_cockpit_type(mech: &mut Mech) {
             mech.lt_crits.push(Crit::Other);
             mech.rt_crits.push(Crit::Other);
         }
-        _ => panic!("Invalid cockpit type"),
+        _ => panic!("Invalid cockpit type {}", mech.cockpit),
     }
 }
 
@@ -320,12 +344,12 @@ fn handle_engine_type(mech: &mut Mech) {
             mech.rt_crits.push(Crit::Engine);
             mech.rt_crits.push(Crit::Engine);
         }
-        _ => panic!("Invalid cockpit type"),
+        _ => panic!("Invalid engine type {}", mech.engine),
     }
 }
 
 fn handle_gyro_type(mech: &mut Mech) {
-    match mech.cockpit.as_str() {
+    match mech.gyro.as_str() {
         "Standard Gyro" => {
             mech.ct_crits.push(Crit::Gyro);
             mech.ct_crits.push(Crit::Gyro);
@@ -350,14 +374,14 @@ fn handle_gyro_type(mech: &mut Mech) {
             mech.ct_crits.push(Crit::Gyro);
             mech.ct_crits.push(Crit::Gyro);
         }
-        _ => panic!("Invalid cockpit type"),
+        _ => panic!("Invalid gyro type {}", mech.gyro),
     }
 }
 
 fn handle_cockpit(child: &Element, mech: &mut Mech) {
     for cockpit_child in child.children() {
         if cockpit_child.name() == "type" {
-            mech.cockpit = child.text();
+            mech.cockpit = cockpit_child.text();
         }
     }
 }
