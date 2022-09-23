@@ -75,19 +75,19 @@ fn main() {
 
     for child in mech_element.children() {
         if child.name() == "engine" {
-            mech.engine = String::from(child.text());
+            mech.engine = child.text();
         } else if child.name() == "cockpit" {
             for cockpit_child in child.children() {
                 if cockpit_child.name() == "type" {
-                    mech.cockpit = String::from(child.text());
+                    mech.cockpit = child.text();
                 }
             }
         } else if child.name() == "gyro" {
-            mech.gyro = String::from(child.text());
+            mech.gyro = child.text();
         } else if child.name() == "baseloadout" {
             for loadout_child in child.children() {
                 if loadout_child.name() == "clancase" {
-                    mech.clan_case = (loadout_child.text() == "TRUE");
+                    mech.clan_case = loadout_child.text() == "TRUE";
                 } else if loadout_child.name() == "equipment" {
                     let mut location = Location::CenterTorso;
                     let mut equipment_type = Crit::Other;
