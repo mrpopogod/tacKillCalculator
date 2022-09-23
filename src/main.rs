@@ -1,16 +1,21 @@
 extern crate minidom;
 
+use minidom::Element;
+use rand::{
+    seq::{IteratorRandom, SliceRandom},
+    Rng,
+};
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
-use minidom::Element;
 
+#[derive(Clone, Copy, PartialEq)]
 enum Crit {
     Engine,
     Cockpit,
     Gyro,
     Ammo,
-    Other
+    Other,
 }
 
 enum Location {
@@ -21,7 +26,7 @@ enum Location {
     LeftArm,
     RightArm,
     LeftLeg,
-    RightLeg
+    RightLeg,
 }
 
 struct Mech {
@@ -36,7 +41,7 @@ struct Mech {
     la_crits: Vec<Crit>,
     ra_crits: Vec<Crit>,
     ll_crits: Vec<Crit>,
-    rl_crits: Vec<Crit>
+    rl_crits: Vec<Crit>,
 }
 
 fn main() {
@@ -74,60 +79,348 @@ fn main() {
     };
 
     for child in mech_element.children() {
-        if child.name() == "engine" {
-            mech.engine = child.text();
-        } else if child.name() == "cockpit" {
-            for cockpit_child in child.children() {
-                if cockpit_child.name() == "type" {
-                    mech.cockpit = child.text();
-                }
-            }
-        } else if child.name() == "gyro" {
-            mech.gyro = child.text();
-        } else if child.name() == "baseloadout" {
-            for loadout_child in child.children() {
-                if loadout_child.name() == "clancase" {
-                    mech.clan_case = loadout_child.text() == "TRUE";
-                } else if loadout_child.name() == "equipment" {
-                    let mut location = Location::CenterTorso;
-                    let mut equipment_type = Crit::Other;
-                    for equipment_child in loadout_child.children() {
-                        if equipment_child.name() == "location" {
-                            match equipment_child.text().as_str() {
-                                "RT" => location = Location::RightTorso,
-                                "LT" => location = Location::LeftTorso,
-                                "RA" => location = Location::RightArm,
-                                "LA" => location = Location::LeftArm,
-                                "RL" => location = Location::RightLeg,
-                                "LL" => location = Location::LeftLeg,
-                                "CT" => location = Location::CenterTorso,
-                                "HD" => location = Location::Head,
-                                _ => panic!("Invalid equipment location")
-                            }
-                        } else if equipment_child.name() == "type" {
-                            match equipment_child.text().as_str() {
-                                "ammunition" => equipment_type = Crit::Ammo,
-                                _ => equipment_type = Crit::Other
-                            }
-                        }
-                    }
-
-                    match location {
-                        Location::Head => mech.head_crits.push(equipment_type),
-                        Location::CenterTorso => mech.ct_crits.push(equipment_type),
-                        Location::LeftTorso => mech.lt_crits.push(equipment_type),
-                        Location::RightTorso => mech.rt_crits.push(equipment_type),
-                        Location::LeftArm => mech.la_crits.push(equipment_type),
-                        Location::RightArm => mech.ra_crits.push(equipment_type),
-                        Location::LeftLeg => mech.ll_crits.push(equipment_type),
-                        Location::RightLeg => mech.rl_crits.push(equipment_type),
-                    }
-                }
-            }
-
-            // TODO: more matches
-            // TODO: refactor elseifs into matches and sub fuctions for the internals
-            // TODO: actually run the chance to die simulations
+        match child.name().to_string().as_str() {
+            "engine" => mech.engine = child.text(),
+            "cockpit" => handle_cockpit(child, &mut mech),
+            "gyro" => mech.gyro = child.text(),
+            "baseloadout" => handle_loadout(child, &mut mech),
+            // TODO: "loadout"
+            _ => (),
         }
     }
+
+    handle_cockpit_type(&mut mech);
+    handle_engine_type(&mut mech);
+    handle_gyro_type(&mut mech);
+    populate_leg_crits(&mut mech);
+
+    let mut deaths = 0;
+    for _i in 0..1000000 {
+        match two_d_six() {
+            2..=7 => (),
+            8..=9 => {
+                let location_crits: Vec<Crit> = mech.ct_crits.to_vec();
+                check_single_crit(location_crits, &mut deaths);
+            }
+            10..=11 => {
+                let location_crits: Vec<Crit> = mech.ct_crits.to_vec();
+                check_double_crit(location_crits, &mut deaths);
+            }
+            12 => {
+                let location_crits: Vec<Crit> = mech.ct_crits.to_vec();
+                check_triple_crit(location_crits, &mut deaths);
+            }
+            _ => panic!("2d6 somehow was not between 2 and 12"),
+        }
+    }
+
+    let mut floating_deaths = 0;
+    for _i in 0..1000000 {
+        let location_crits = match two_d_six() {
+            2 | 7 => mech.ct_crits.to_vec(),
+            3 | 4 => mech.ra_crits.to_vec(),
+            5 => mech.rl_crits.to_vec(),
+            6 => mech.rt_crits.to_vec(),
+            8 => mech.lt_crits.to_vec(),
+            9 => mech.ll_crits.to_vec(),
+            10 | 11 => mech.la_crits.to_vec(),
+            12 => mech.head_crits.to_vec(),
+            _ => panic!("2d6 somehow was not between 2 and 12"),
+        };
+
+        match two_d_six() {
+            2..=7 => (),
+            8..=9 => {
+                check_single_crit(location_crits, &mut floating_deaths);
+            }
+            10..=11 => {
+                check_double_crit(location_crits, &mut floating_deaths);
+            }
+            12 => {
+                check_triple_crit(location_crits, &mut floating_deaths);
+            }
+            _ => panic!("2d6 somehow was not between 2 and 12"),
+        }
+    }
+
+    let regular_percentage = deaths as f32 / 1000000.0;
+    let floating_percentage = floating_deaths as f32 / 1000000.0;
+
+    println!(
+        "Regular death percentage {} floating crit death percentage {}",
+        regular_percentage, floating_percentage
+    );
+}
+
+fn check_single_crit(location_crits: Vec<Crit>, deaths: &mut i32) {
+    let mut rng = rand::thread_rng();
+    let chosen_crit = location_crits.choose(&mut rng).unwrap();
+    if *chosen_crit == Crit::Ammo || *chosen_crit == Crit::Cockpit {
+        *deaths += 1;
+    }
+}
+
+fn check_double_crit(mut location_crits: Vec<Crit>, deaths: &mut i32) {
+    let mut rng = rand::thread_rng();
+    let (i, first_crit) = location_crits
+        .iter_mut()
+        .enumerate()
+        .choose(&mut rng)
+        .unwrap();
+    let first_crit = *first_crit;
+    location_crits.remove(i);
+    let (i, second_crit) = location_crits
+        .iter_mut()
+        .enumerate()
+        .choose(&mut rng)
+        .unwrap();
+    let second_crit = *second_crit;
+    location_crits.remove(i);
+
+    if first_crit == Crit::Ammo
+        || second_crit == Crit::Ammo
+        || first_crit == Crit::Cockpit
+        || second_crit == Crit::Cockpit
+    {
+        *deaths += 1;
+    } else if first_crit == Crit::Gyro && second_crit == Crit::Gyro {
+        *deaths += 1;
+    }
+}
+
+fn check_triple_crit(mut location_crits: Vec<Crit>, deaths: &mut i32) {
+    let mut rng = rand::thread_rng();
+    let (i, first_crit) = location_crits
+        .iter_mut()
+        .enumerate()
+        .choose(&mut rng)
+        .unwrap();
+    let first_crit = *first_crit;
+    location_crits.remove(i);
+    let (i, second_crit) = location_crits
+        .iter_mut()
+        .enumerate()
+        .choose(&mut rng)
+        .unwrap();
+    let second_crit = *second_crit;
+    location_crits.remove(i);
+    let (i, third_crit) = location_crits
+        .iter_mut()
+        .enumerate()
+        .choose(&mut rng)
+        .unwrap();
+    let third_crit = *third_crit;
+    location_crits.remove(i);
+
+    if first_crit == Crit::Ammo
+        || second_crit == Crit::Ammo
+        || third_crit == Crit::Ammo
+        || first_crit == Crit::Cockpit
+        || second_crit == Crit::Cockpit
+        || third_crit == Crit::Cockpit
+    {
+        *deaths += 1;
+    } else if first_crit == Crit::Engine
+        && second_crit == Crit::Engine
+        && third_crit == Crit::Engine
+    {
+        *deaths += 1;
+    } else if (first_crit == Crit::Gyro && second_crit == Crit::Gyro)
+        || (first_crit == Crit::Gyro && third_crit == Crit::Gyro)
+        || (second_crit == Crit::Gyro && third_crit == Crit::Gyro)
+    {
+        *deaths += 1;
+    }
+}
+
+fn populate_leg_crits(mech: &mut Mech) {
+    mech.ll_crits.push(Crit::Other);
+    mech.ll_crits.push(Crit::Other);
+    mech.ll_crits.push(Crit::Other);
+    mech.ll_crits.push(Crit::Other);
+    mech.rl_crits.push(Crit::Other);
+    mech.rl_crits.push(Crit::Other);
+    mech.rl_crits.push(Crit::Other);
+    mech.rl_crits.push(Crit::Other);
+}
+
+fn handle_cockpit_type(mech: &mut Mech) {
+    match mech.cockpit.as_str() {
+        "Standard Cockpit" => {
+            mech.head_crits.push(Crit::Cockpit);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+        }
+        "Small Cockpit" => {
+            mech.head_crits.push(Crit::Cockpit);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+        }
+        "Torso Cockpit" => {
+            mech.ct_crits.push(Crit::Cockpit);
+            mech.ct_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+            mech.head_crits.push(Crit::Other);
+            mech.lt_crits.push(Crit::Other);
+            mech.rt_crits.push(Crit::Other);
+        }
+        _ => panic!("Invalid cockpit type"),
+    }
+}
+
+fn handle_engine_type(mech: &mut Mech) {
+    match mech.engine.as_str() {
+        "Fusion Engine" => {
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+        }
+        "Compact Fusion Engine" => {
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+        }
+        "XL Engine" => {
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+        }
+        "XXL Engine" => {
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.ct_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.lt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+            mech.rt_crits.push(Crit::Engine);
+        }
+        _ => panic!("Invalid cockpit type"),
+    }
+}
+
+fn handle_gyro_type(mech: &mut Mech) {
+    match mech.cockpit.as_str() {
+        "Standard Gyro" => {
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+        }
+        "Heavy Duty Gyro" => {
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+        }
+        "XL Gyro" => {
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+        }
+        "Compact Gyro" => {
+            mech.ct_crits.push(Crit::Gyro);
+            mech.ct_crits.push(Crit::Gyro);
+        }
+        _ => panic!("Invalid cockpit type"),
+    }
+}
+
+fn handle_cockpit(child: &Element, mech: &mut Mech) {
+    for cockpit_child in child.children() {
+        if cockpit_child.name() == "type" {
+            mech.cockpit = child.text();
+        }
+    }
+}
+
+fn handle_loadout(child: &Element, mech: &mut Mech) {
+    for loadout_child in child.children() {
+        match loadout_child.name().to_string().as_str() {
+            "clancase" => mech.clan_case = loadout_child.text() == "TRUE",
+            "equipment" => handle_equipment(loadout_child, mech),
+            "actuators" => (), // attributes, lla, lh, rla, rh
+            "heatsinks" => (), // type element, location element per HS
+            _ => (),
+        }
+    }
+}
+
+fn handle_equipment(loadout_child: &Element, mech: &mut Mech) {
+    let mut location = Location::CenterTorso;
+    let mut equipment_type = Crit::Other;
+    for equipment_child in loadout_child.children() {
+        extract_equipment_type_and_location(equipment_child, &mut location, &mut equipment_type);
+    }
+    match location {
+        Location::Head => mech.head_crits.push(equipment_type),
+        Location::CenterTorso => mech.ct_crits.push(equipment_type),
+        Location::LeftTorso => mech.lt_crits.push(equipment_type),
+        Location::RightTorso => mech.rt_crits.push(equipment_type),
+        Location::LeftArm => mech.la_crits.push(equipment_type),
+        Location::RightArm => mech.ra_crits.push(equipment_type),
+        Location::LeftLeg => mech.ll_crits.push(equipment_type),
+        Location::RightLeg => mech.rl_crits.push(equipment_type),
+    }
+}
+
+fn extract_equipment_type_and_location(
+    equipment_child: &Element,
+    location: &mut Location,
+    equipment_type: &mut Crit,
+) {
+    if equipment_child.name() == "location" {
+        match equipment_child.text().as_str() {
+            "RT" => *location = Location::RightTorso,
+            "LT" => *location = Location::LeftTorso,
+            "RA" => *location = Location::RightArm,
+            "LA" => *location = Location::LeftArm,
+            "RL" => *location = Location::RightLeg,
+            "LL" => *location = Location::LeftLeg,
+            "CT" => *location = Location::CenterTorso,
+            "HD" => *location = Location::Head,
+            _ => panic!("Invalid equipment location"),
+        }
+    } else if equipment_child.name() == "type" {
+        match equipment_child.text().as_str() {
+            "ammunition" => *equipment_type = Crit::Ammo,
+            _ => *equipment_type = Crit::Other,
+        }
+    } // TODO: probably need to handle non-crittable equipment
+}
+
+pub fn two_d_six() -> u8 {
+    let mut rng = rand::thread_rng();
+    let d1 = rng.gen_range(1..=6);
+    let d2 = rng.gen_range(1..=6);
+
+    d1 + d2
 }
