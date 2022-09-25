@@ -459,6 +459,7 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 return;
             }
         } else {
+            // TODO: need to account for torso CASE somehow if this is an arm or leg
             *deaths += 1;
             return;
         }
