@@ -16,6 +16,7 @@ enum Crit {
     Cockpit,
     Gyro,
     Ammo,
+    Explosive(i32),
     Case,
     CaseII,
     Other,
@@ -26,6 +27,19 @@ enum Config {
     Biped,
     Quad,
     Tripod,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Location {
+    Head,
+    CenterTorso,
+    LeftTorso,
+    RightTorso,
+    LeftArm,
+    RightArm,
+    LeftLeg,
+    RightLeg,
+    CenterLeg,
 }
 
 #[derive(Debug)]
@@ -196,6 +210,13 @@ fn main() {
 
     // TODO: for full correctness should check for crits not exceeding the legal amount in each location.
 
+    // major TODO: there is a much cleaner way to handle crits; first do a roll and set a mutable number of crits rolled
+    // then loop over that number and do the "remove a crit, see what happens" logic.  If it's a CASEII ammo explosion then
+    // do another roll, modified for CASEII, and add that to the total number of crits to roll.  No need for this "do I have one
+    // or two or three?" thing.  And keep that same running track of engines and gyros hit.
+    // Another modification; clone the mech and pass that into the above.  Generate a location and use that to dereference the
+    // vec, so it's easier to shift to looking at the torso vec during ammo explosions with IS CASE.
+
     let mut deaths = 0;
     for _i in 0..1000000 {
         let mut result = two_d_six();
@@ -306,10 +327,22 @@ fn check_crit_roll(
         8..=9 => {
             if from_caseii {
                 if let 2..=7 = two_d_six() {
-                    check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths)
+                    check_single_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    )
                 }
             } else {
-                check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
+                check_single_crit(
+                    clan_case,
+                    heavy_duty_gyro,
+                    location_crits,
+                    torso_survives,
+                    deaths,
+                );
             }
         }
         10..=11 => {
@@ -323,12 +356,30 @@ fn check_crit_roll(
                 }
 
                 match num_crits {
-                    1 => check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
-                    2 => check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
+                    1 => check_single_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    ),
+                    2 => check_double_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    ),
                     _ => (),
                 }
             } else {
-                check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
+                check_double_crit(
+                    clan_case,
+                    heavy_duty_gyro,
+                    location_crits,
+                    torso_survives,
+                    deaths,
+                );
             }
         }
         12 => {
@@ -345,13 +396,37 @@ fn check_crit_roll(
                 }
 
                 match num_crits {
-                    1 => check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
-                    2 => check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
-                    3 => check_triple_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
+                    1 => check_single_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    ),
+                    2 => check_double_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    ),
+                    3 => check_triple_crit(
+                        clan_case,
+                        heavy_duty_gyro,
+                        location_crits,
+                        torso_survives,
+                        deaths,
+                    ),
                     _ => (),
                 }
             } else {
-                check_triple_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
+                check_triple_crit(
+                    clan_case,
+                    heavy_duty_gyro,
+                    location_crits,
+                    torso_survives,
+                    deaths,
+                );
             }
         }
         _ => panic!("2d6 somehow was not between 2 and 12"),
@@ -360,26 +435,39 @@ fn check_crit_roll(
 
 fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
     match line.as_str() {
-        "-Empty-" => (),
+        "-empty-" => (),
+        "endo-steel" => (),
+        "clan endo steel" => (), // TODO, can I do some sort of pattern here (and below for the line contains stuff) so I don't need so many cases?
         "" => return ControlFlow::Break(()),
         _ => {
-            if line.contains("Ammo") {
+            if line.contains("ammo") {
                 crits.push(Crit::Ammo);
-            } else if line.contains("Cockpit") {
+            } else if line.contains("cockpit") {
                 crits.push(Crit::Cockpit);
-            } else if line.contains("Engine") {
+            } else if line.contains("engine") {
                 crits.push(Crit::Engine);
-            } else if line.contains("Gyro") {
+            } else if line.contains("gyro") {
                 crits.push(Crit::Gyro);
-            } else if line.contains("CASEII") {
+            } else if line.contains("caseii") {
                 crits.push(Crit::CaseII);
-            } else if line.contains("CASE") {
+            } else if line.contains("case") {
                 crits.push(Crit::Case);
+            } else if line.contains("heavygaussrifle") {
+                crits.push(Crit::Explosive(25));
+            } else if line.contains("lightgaussrifle") {
+                crits.push(Crit::Explosive(10));
+            } else if line.contains("gaussrifle") {
+                crits.push(Crit::Explosive(20));
             } else {
                 crits.push(Crit::Other);
             }
         }
     }
+
+    // TODO: need to fill out this more for all the explosive equipment and double check the right parsing order.
+    // Also need to account for non-explosive ammo.  And need to not count Endo-Steel, Ferro-Fibrous, and the like
+    // as crittable.
+
     ControlFlow::Continue(())
 }
 
@@ -444,7 +532,13 @@ fn check_double_crit(
     deaths: &mut i32,
 ) {
     if location_crits.len() < 2 {
-        check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
+        check_single_crit(
+            clan_case,
+            heavy_duty_gyro,
+            location_crits,
+            torso_survives,
+            deaths,
+        );
         return;
     }
 
@@ -573,7 +667,13 @@ fn check_triple_crit(
     deaths: &mut i32,
 ) {
     if location_crits.len() < 3 {
-        check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
+        check_double_crit(
+            clan_case,
+            heavy_duty_gyro,
+            location_crits,
+            torso_survives,
+            deaths,
+        );
         return;
     }
 
@@ -747,7 +847,40 @@ fn check_triple_crit(
     }
 }
 
-pub fn two_d_six() -> u8 {
+fn get_location(is_tripod: bool) -> Location {
+    let mut location = match two_d_six() {
+        2 | 7 => Location::CenterTorso,
+        3 | 4 => Location::RightArm,
+        5 => Location::RightLeg,
+        6 => Location::RightTorso,
+        8 => Location::LeftTorso,
+        9 => Location::LeftLeg,
+        10 | 11 => Location::LeftArm,
+        12 => Location::Head,
+        _ => panic!("2d6 somehow was not between 2 and 12"),
+    };
+
+    // TODO: double check this mapping
+    if is_tripod && (location == Location::LeftLeg || location == Location::RightLeg) {
+        match one_d_six() {
+            1 | 2 => location = Location::RightLeg,
+            3 | 4 => location = Location::CenterLeg,
+            5 | 6 => location = Location::LeftLeg,
+            _ => panic!("1d66 somehow was not between 1 and 6")
+        }
+    }
+
+    location
+}
+
+fn one_d_six() -> u8 {
+    let mut rng = rand::thread_rng();
+    let d1 = rng.gen_range(1..=6);
+
+    d1
+}
+
+fn two_d_six() -> u8 {
     let mut rng = rand::thread_rng();
     let d1 = rng.gen_range(1..=6);
     let d2 = rng.gen_range(1..=6);
