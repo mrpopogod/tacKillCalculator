@@ -91,28 +91,28 @@ fn main() {
 
     let mut lines = file.lines();
     while let Some(line) = lines.next() {
-        let line = line.unwrap();
-        if line.starts_with("Config") {
-            if line.contains("Quad") {
+        let line = line.unwrap().to_lowercase();
+        if line.starts_with("config") {
+            if line.contains("quad") {
                 mech.config = Config::Quad;
-            } else if line.contains("Tripod") {
+            } else if line.contains("tripod") {
                 mech.config = Config::Tripod;
             }
         }
 
-        if line.starts_with("TechBase") && line.contains("Clan") {
+        if line.starts_with("techbase") && line.contains("clan") {
             mech.clan_case = true;
         }
 
-        if line.starts_with("Armor") && line.contains("Hardened") {
+        if line.starts_with("armor") && line.contains("hardened") {
             mech.hardened = true;
         }
 
-        if line.starts_with("Gyro") && line.contains("Heavy Duty") {
+        if line.starts_with("gyro") && line.contains("heavy duty") {
             mech.heavy_duty_gyro = true;
         }
 
-        if line.starts_with("Left Arm") || line.starts_with("Left Front Leg") {
+        if line.starts_with("left arm") || line.starts_with("left front leg") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.la_crits) {
@@ -121,7 +121,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Right Arm") || line.starts_with("Right Front Leg") {
+        if line.starts_with("right arm") || line.starts_with("right front leg") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ra_crits) {
@@ -130,7 +130,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Left Leg") || line.starts_with("Left Rear Leg") {
+        if line.starts_with("left leg") || line.starts_with("left rear leg") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ll_crits) {
@@ -139,7 +139,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Right Leg") || line.starts_with("Right Rear Leg") {
+        if line.starts_with("right leg") || line.starts_with("right rear leg") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.rl_crits) {
@@ -148,7 +148,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Center Leg") {
+        if line.starts_with("center leg") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.cl_crits) {
@@ -157,7 +157,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Left Torso") {
+        if line.starts_with("left torso") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.lt_crits) {
@@ -166,7 +166,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Right Torso") {
+        if line.starts_with("right torso") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.rt_crits) {
@@ -175,7 +175,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Center Torso") {
+        if line.starts_with("center torso") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ct_crits) {
@@ -184,7 +184,7 @@ fn main() {
             }
         }
 
-        if line.starts_with("Head") {
+        if line.starts_with("head") {
             for line in lines.by_ref() {
                 let line = line.unwrap();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.head_crits) {
@@ -207,6 +207,7 @@ fn main() {
         check_crit_roll(
             result,
             mech.clan_case,
+            mech.heavy_duty_gyro,
             &mut location_crits,
             false,
             false,
@@ -270,6 +271,7 @@ fn main() {
         check_crit_roll(
             result,
             mech.clan_case,
+            mech.heavy_duty_gyro,
             &mut location_crits,
             torso_survives,
             false,
@@ -293,6 +295,7 @@ fn main() {
 fn check_crit_roll(
     result: u8,
     clan_case: bool,
+    heavy_duty_gyro: bool,
     location_crits: &mut Vec<Crit>,
     torso_survives: bool,
     from_caseii: bool,
@@ -303,10 +306,10 @@ fn check_crit_roll(
         8..=9 => {
             if from_caseii {
                 if let 2..=7 = two_d_six() {
-                    check_single_crit(clan_case, location_crits, torso_survives, deaths)
+                    check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths)
                 }
             } else {
-                check_single_crit(clan_case, location_crits, torso_survives, deaths);
+                check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
             }
         }
         10..=11 => {
@@ -320,12 +323,12 @@ fn check_crit_roll(
                 }
 
                 match num_crits {
-                    1 => check_single_crit(clan_case, location_crits, torso_survives, deaths),
-                    2 => check_double_crit(clan_case, location_crits, torso_survives, deaths),
+                    1 => check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
+                    2 => check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
                     _ => (),
                 }
             } else {
-                check_double_crit(clan_case, location_crits, torso_survives, deaths);
+                check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
             }
         }
         12 => {
@@ -342,13 +345,13 @@ fn check_crit_roll(
                 }
 
                 match num_crits {
-                    1 => check_single_crit(clan_case, location_crits, torso_survives, deaths),
-                    2 => check_double_crit(clan_case, location_crits, torso_survives, deaths),
-                    3 => check_triple_crit(clan_case, location_crits, torso_survives, deaths),
+                    1 => check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
+                    2 => check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
+                    3 => check_triple_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths),
                     _ => (),
                 }
             } else {
-                check_triple_crit(clan_case, location_crits, torso_survives, deaths);
+                check_triple_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
             }
         }
         _ => panic!("2d6 somehow was not between 2 and 12"),
@@ -382,6 +385,7 @@ fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
 
 fn check_single_crit(
     clan_case: bool,
+    heavy_duty_gyro: bool,
     location_crits: &mut Vec<Crit>,
     torso_survives: bool,
     deaths: &mut i32,
@@ -404,6 +408,7 @@ fn check_single_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -420,7 +425,7 @@ fn check_single_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
             }
         } else if torso_survives {
@@ -433,12 +438,13 @@ fn check_single_crit(
 
 fn check_double_crit(
     clan_case: bool,
+    heavy_duty_gyro: bool,
     location_crits: &mut Vec<Crit>,
     torso_survives: bool,
     deaths: &mut i32,
 ) {
     if location_crits.len() < 2 {
-        check_single_crit(clan_case, location_crits, torso_survives, deaths);
+        check_single_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
         return;
     }
 
@@ -462,6 +468,7 @@ fn check_double_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -478,7 +485,7 @@ fn check_double_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
                 return;
             }
@@ -517,6 +524,7 @@ fn check_double_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -534,7 +542,7 @@ fn check_double_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
                 return;
             }
@@ -552,19 +560,20 @@ fn check_double_crit(
         _ => (),
     }
 
-    if engines >= 3 || gyros >= 2 {
+    if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
         *deaths += 1;
     }
 }
 
 fn check_triple_crit(
     clan_case: bool,
+    heavy_duty_gyro: bool,
     location_crits: &mut Vec<Crit>,
     torso_survives: bool,
     deaths: &mut i32,
 ) {
     if location_crits.len() < 3 {
-        check_double_crit(clan_case, location_crits, torso_survives, deaths);
+        check_double_crit(clan_case, heavy_duty_gyro, location_crits, torso_survives, deaths);
         return;
     }
 
@@ -588,6 +597,7 @@ fn check_triple_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -604,7 +614,7 @@ fn check_triple_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
                 return;
             }
@@ -643,6 +653,7 @@ fn check_triple_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -659,7 +670,7 @@ fn check_triple_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
                 return;
             }
@@ -696,6 +707,7 @@ fn check_triple_crit(
             check_crit_roll(
                 result,
                 clan_case,
+                heavy_duty_gyro,
                 location_crits,
                 torso_survives,
                 true,
@@ -712,7 +724,7 @@ fn check_triple_crit(
                 }
             }
 
-            if engines >= 3 || gyros >= 2 {
+            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
                 *deaths += 1;
                 return;
             }
@@ -730,7 +742,7 @@ fn check_triple_crit(
         _ => (),
     }
 
-    if engines >= 3 || gyros >= 2 {
+    if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
         *deaths += 1;
     }
 }
