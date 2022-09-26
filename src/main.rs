@@ -3,9 +3,12 @@ use rand::{
     Rng,
 };
 use std::cmp;
+use std::env;
+use std::fs::File;
+use std::io::BufRead;
 use std::io::BufReader;
-use std::{env, io::BufRead};
-use std::{fs::File, ops::ControlFlow};
+use std::ops::ControlFlow;
+use std::panic;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Crit {
@@ -43,6 +46,14 @@ struct Mech {
 }
 
 fn main() {
+    panic::set_hook(Box::new(|info| {
+        if let Some(s) = info.payload().downcast_ref::<&str>() {
+            println!("{}", s);
+        } else {
+            println!("Unknown error occurred");
+        }
+    }));
+
     let mut filename = String::from("");
     let mut found = false;
     for argument in env::args() {
@@ -54,7 +65,7 @@ fn main() {
     }
 
     if filename.is_empty() {
-        panic!("No --file found");
+        panic!("No --file specified");
     } else if !filename.ends_with(".mtf") {
         panic!("Only MTF files are supported");
     }
