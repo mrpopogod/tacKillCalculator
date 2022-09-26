@@ -13,8 +13,8 @@ enum Crit {
     Cockpit,
     Gyro,
     Ammo,
-    CASE,
-    CASEII,
+    Case,
+    CaseII,
     Other,
 }
 
@@ -192,20 +192,34 @@ fn main() {
             result = cmp::max(result - 2, 2);
         }
 
-        let location_crits: Vec<Crit> = mech.ct_crits.to_vec();
-        check_crit_roll(result, mech.clan_case, location_crits, &mut deaths);
+        let mut location_crits: Vec<Crit> = mech.ct_crits.to_vec();
+        check_crit_roll(result, mech.clan_case, &mut location_crits, false, false, &mut deaths);
     }
 
     let mut floating_deaths = 0;
     for _i in 0..1000000 {
-        let location_crits = match two_d_six() {
+        let mut left_side = false;
+        let mut right_side = false;
+        let mut location_crits = match two_d_six() {
             2 | 7 => mech.ct_crits.to_vec(),
-            3 | 4 => mech.ra_crits.to_vec(),
-            5 => mech.rl_crits.to_vec(),
+            3 | 4 => {
+                right_side = true;
+                mech.ra_crits.to_vec()
+            }
+            5 => {
+                right_side = true;
+                mech.rl_crits.to_vec()
+            }
             6 => mech.rt_crits.to_vec(),
             8 => mech.lt_crits.to_vec(),
-            9 => mech.ll_crits.to_vec(),
-            10 | 11 => mech.la_crits.to_vec(),
+            9 => {
+                left_side = true;
+                mech.ll_crits.to_vec()
+            }
+            10 | 11 => {
+                left_side = true;
+                mech.la_crits.to_vec()
+            }
             12 => mech.head_crits.to_vec(),
             _ => panic!("2d6 somehow was not between 2 and 12"),
         };
@@ -215,7 +229,27 @@ fn main() {
             result = cmp::max(result - 2, 2);
         }
 
-        check_crit_roll(result, mech.clan_case, location_crits, &mut floating_deaths);
+        let mut torso_survives = false;
+        if left_side || right_side {
+            let mut engine_crits = 0;
+            let side_crits = if left_side {
+                mech.lt_crits.to_vec()
+            } else {
+                mech.rt_crits.to_vec()
+            };
+
+            for crit in side_crits {
+                if crit == Crit::Engine {
+                    engine_crits += 1;
+                }
+            }
+
+            if engine_crits < 3 {
+                torso_survives = true;
+            }
+        }
+
+        check_crit_roll(result, mech.clan_case, &mut location_crits, torso_survives, false, &mut floating_deaths);
     }
 
     let regular_percentage = deaths as f32 / 1000000.0 * 100.0;
@@ -231,17 +265,65 @@ fn main() {
     );
 }
 
-fn check_crit_roll(result: u8, clan_case: bool, location_crits: Vec<Crit>, deaths: &mut i32) {
+fn check_crit_roll(result: u8, clan_case: bool, location_crits: &mut Vec<Crit>, torso_survives: bool, from_caseii: bool, deaths: &mut i32) {
     match result {
         2..=7 => (),
         8..=9 => {
-            check_single_crit(clan_case, location_crits, deaths);
+            if from_caseii {
+                match two_d_six() {
+                    2..=7 => check_single_crit(clan_case, location_crits, torso_survives, deaths),
+                    _ => ()
+                }
+            } else {
+                check_single_crit(clan_case, location_crits, torso_survives, deaths);
+            }
         }
         10..=11 => {
-            check_double_crit(clan_case, location_crits, deaths);
+            if from_caseii {
+                let mut num_crits = 0;
+                match two_d_six() {
+                    2..=7 => num_crits += 1,
+                    _ => ()
+                }
+                match two_d_six() {
+                    2..=7 => num_crits += 1,
+                    _ => ()
+                }
+
+                match num_crits {
+                    1 => check_single_crit(clan_case, location_crits, torso_survives, deaths),
+                    2 => check_double_crit(clan_case, location_crits, torso_survives, deaths),
+                    _ => ()
+                }
+            } else {
+                check_double_crit(clan_case, location_crits, torso_survives, deaths);
+            }
         }
         12 => {
-            check_triple_crit(clan_case, location_crits, deaths);
+            if from_caseii {
+                let mut num_crits = 0;
+                match two_d_six() {
+                    2..=7 => num_crits += 1,
+                    _ => ()
+                }
+                match two_d_six() {
+                    2..=7 => num_crits += 1,
+                    _ => ()
+                }
+                match two_d_six() {
+                    2..=7 => num_crits += 1,
+                    _ => ()
+                }
+
+                match num_crits {
+                    1 => check_single_crit(clan_case, location_crits, torso_survives, deaths),
+                    2 => check_double_crit(clan_case, location_crits, torso_survives, deaths),
+                    3 => check_triple_crit(clan_case, location_crits, torso_survives, deaths),
+                    _ => ()
+                }
+            } else {
+                check_triple_crit(clan_case, location_crits, torso_survives, deaths);
+            }
         }
         _ => panic!("2d6 somehow was not between 2 and 12"),
     }
@@ -261,9 +343,9 @@ fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
             } else if line.contains("Gyro") {
                 crits.push(Crit::Gyro);
             } else if line.contains("CASEII") {
-                crits.push(Crit::CASEII);
+                crits.push(Crit::CaseII);
             } else if line.contains("CASE") {
-                crits.push(Crit::CASE);
+                crits.push(Crit::Case);
             } else {
                 crits.push(Crit::Other);
             }
@@ -272,7 +354,7 @@ fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
     ControlFlow::Continue(())
 }
 
-fn check_single_crit(clan_case: bool, location_crits: Vec<Crit>, deaths: &mut i32) {
+fn check_single_crit(clan_case: bool, location_crits: &mut Vec<Crit>, torso_survives: bool, deaths: &mut i32) {
     if location_crits.is_empty() {
         return;
     }
@@ -285,12 +367,12 @@ fn check_single_crit(clan_case: bool, location_crits: Vec<Crit>, deaths: &mut i3
         return;
     }
 
-    if chosen_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if chosen_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
             return;
-        } else if location_crits.contains(&Crit::CASE) {
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -305,6 +387,8 @@ fn check_single_crit(clan_case: bool, location_crits: Vec<Crit>, deaths: &mut i3
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
             *deaths += 1;
             return;
@@ -312,9 +396,9 @@ fn check_single_crit(clan_case: bool, location_crits: Vec<Crit>, deaths: &mut i3
     }
 }
 
-fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mut i32) {
+fn check_double_crit(clan_case: bool, location_crits: &mut Vec<Crit>, torso_survives: bool, deaths: &mut i32) {
     if location_crits.len() < 2 {
-        check_single_crit(clan_case, location_crits, deaths);
+        check_single_crit(clan_case, location_crits, torso_survives, deaths);
         return;
     }
 
@@ -332,12 +416,11 @@ fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
         return;
     }
 
-    if first_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if first_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
-            return;
-        } else if location_crits.contains(&Crit::CASE) {
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -352,6 +435,8 @@ fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
             *deaths += 1;
             return;
@@ -379,12 +464,12 @@ fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
         return;
     }
 
-    if second_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if second_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
             return;
-        } else if location_crits.contains(&Crit::CASE) {
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -399,6 +484,8 @@ fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
             *deaths += 1;
             return;
@@ -417,9 +504,9 @@ fn check_double_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
     }
 }
 
-fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mut i32) {
+fn check_triple_crit(clan_case: bool, location_crits: &mut Vec<Crit>, torso_survives: bool, deaths: &mut i32) {
     if location_crits.len() < 3 {
-        check_double_crit(clan_case, location_crits, deaths);
+        check_double_crit(clan_case, location_crits, torso_survives, deaths);
         return;
     }
 
@@ -437,13 +524,11 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
         return;
     }
 
-    // TODO: Figure out how to refactor this block while following the rust borrowing rules
-    if first_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if first_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
-            return;
-        } else if location_crits.contains(&Crit::CASE) {
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -458,8 +543,9 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
-            // TODO: need to account for torso CASE somehow if this is an arm or leg
             *deaths += 1;
             return;
         }
@@ -486,12 +572,11 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
         return;
     }
 
-    if second_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if second_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
-            return;
-        } else if location_crits.contains(&Crit::CASE) {
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -506,6 +591,8 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
             *deaths += 1;
             return;
@@ -531,12 +618,11 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
         return;
     }
 
-    if third_crit == Crit::Ammo && !clan_case {
-        if location_crits.contains(&Crit::CASEII) {
+    if third_crit == Crit::Ammo {
+        if location_crits.contains(&Crit::CaseII) {
             let result = two_d_six();
-            check_crit_roll(result, clan_case, location_crits, deaths);
-            return;
-        } else if location_crits.contains(&Crit::CASE) {
+            check_crit_roll(result, clan_case, location_crits, torso_survives, true, deaths);
+        } else if clan_case || location_crits.contains(&Crit::Case) {
             let mut engines = 0;
             let mut gyros = 0;
             for crit in location_crits.as_slice() {
@@ -551,6 +637,8 @@ fn check_triple_crit(clan_case: bool, mut location_crits: Vec<Crit>, deaths: &mu
                 *deaths += 1;
                 return;
             }
+        } else if torso_survives {
+            return;
         } else {
             *deaths += 1;
             return;
