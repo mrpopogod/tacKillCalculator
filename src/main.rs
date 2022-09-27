@@ -1,7 +1,5 @@
-use rand::{
-    seq::{IteratorRandom, SliceRandom},
-    Rng,
-};
+use rand::seq::IteratorRandom;
+use rand::Rng;
 use std::cmp;
 use std::env;
 use std::fs::File;
@@ -42,7 +40,7 @@ enum Location {
     CenterLeg,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Mech {
     clan_case: bool,
     hardened: bool,
@@ -126,36 +124,36 @@ fn main() {
             mech.heavy_duty_gyro = true;
         }
 
-        if line.starts_with("left arm") || line.starts_with("left front leg") {
+        if line.starts_with("left arm") || line.starts_with("front left leg") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.la_crits) {
                     break;
                 }
             }
         }
 
-        if line.starts_with("right arm") || line.starts_with("right front leg") {
+        if line.starts_with("right arm") || line.starts_with("front right leg") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ra_crits) {
                     break;
                 }
             }
         }
 
-        if line.starts_with("left leg") || line.starts_with("left rear leg") {
+        if line.starts_with("left leg") || line.starts_with("rear left leg") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ll_crits) {
                     break;
                 }
             }
         }
 
-        if line.starts_with("right leg") || line.starts_with("right rear leg") {
+        if line.starts_with("right leg") || line.starts_with("rear right leg") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.rl_crits) {
                     break;
                 }
@@ -164,7 +162,7 @@ fn main() {
 
         if line.starts_with("center leg") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.cl_crits) {
                     break;
                 }
@@ -173,7 +171,7 @@ fn main() {
 
         if line.starts_with("left torso") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.lt_crits) {
                     break;
                 }
@@ -182,7 +180,7 @@ fn main() {
 
         if line.starts_with("right torso") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.rt_crits) {
                     break;
                 }
@@ -191,7 +189,7 @@ fn main() {
 
         if line.starts_with("center torso") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.ct_crits) {
                     break;
                 }
@@ -200,7 +198,7 @@ fn main() {
 
         if line.starts_with("head") {
             for line in lines.by_ref() {
-                let line = line.unwrap();
+                let line = line.unwrap().to_lowercase();
                 if let ControlFlow::Break(_) = parse_crits(line, &mut mech.head_crits) {
                     break;
                 }
@@ -208,96 +206,205 @@ fn main() {
         }
     }
 
-    // TODO: for full correctness should check for crits not exceeding the legal amount in each location.
+    assert!(mech.head_crits.len() <= 6, "Too many head crits");
+    assert!(mech.ct_crits.len() <= 12, "Too many center torso crits");
+    assert!(mech.lt_crits.len() <= 12, "Too many left torso crits");
+    assert!(mech.rt_crits.len() <= 12, "Too many right torso crits");
+    assert!(mech.ll_crits.len() <= 6, "Too many left leg crits");
+    assert!(mech.rl_crits.len() <= 6, "Too many right leg crits");
+    match mech.config {
+        Config::Biped => {
+            assert!(mech.ra_crits.len() <= 12, "Too many right arm crits");
+            assert!(mech.la_crits.len() <= 12, "Too many left arm crits");
+            assert!(
+                mech.cl_crits.len() == 0,
+                "Biped mechs cannot have center leg crits"
+            );
+        }
+        Config::Quad => {
+            assert!(mech.ra_crits.len() <= 6, "Too many forward right leg crits");
+            assert!(mech.la_crits.len() <= 6, "Too many forward left leg crits");
+            assert!(
+                mech.cl_crits.len() == 0,
+                "Quad mechs cannot have center leg crits"
+            );
+        }
+        Config::Tripod => {
+            assert!(mech.ra_crits.len() <= 12, "Too many right arm crits");
+            assert!(mech.la_crits.len() <= 12, "Too many left arm crits");
+            assert!(mech.cl_crits.len() <= 6, "Too many center leg crits");
+        }
+    }
 
-    // major TODO: there is a much cleaner way to handle crits; first do a roll and set a mutable number of crits rolled
-    // then loop over that number and do the "remove a crit, see what happens" logic.  If it's a CASEII ammo explosion then
-    // do another roll, modified for CASEII, and add that to the total number of crits to roll.  No need for this "do I have one
-    // or two or three?" thing.  And keep that same running track of engines and gyros hit.
-    // Another modification; clone the mech and pass that into the above.  Generate a location and use that to dereference the
-    // vec, so it's easier to shift to looking at the torso vec during ammo explosions with IS CASE.
-
+    let mut rng = rand::thread_rng();
+    let required_gyro_hits = if mech.heavy_duty_gyro { 3 } else { 2 };
     let mut deaths = 0;
-    for _i in 0..1000000 {
-        let mut result = two_d_six();
-        if mech.hardened {
-            result = cmp::max(result - 2, 2);
+    'iteration: for _i in 0..1_000_000 {
+        let mut trialmech = mech.clone();
+        let mut numcrits = roll_num_crits(trialmech.hardened);
+        let mut engine_hits = 0;
+        let mut gyro_hits = 0;
+        while numcrits > 0 {
+            let crits = &mut trialmech.ct_crits;
+
+            let (i, chosen_crit) = crits.iter_mut().enumerate().choose(&mut rng).unwrap();
+            let chosen_crit = *chosen_crit;
+            crits.remove(i);
+
+            match chosen_crit {
+                Crit::Engine => engine_hits += 1,
+                Crit::Cockpit => {
+                    deaths += 1;
+                    continue 'iteration;
+                }
+                Crit::Gyro => gyro_hits += 1,
+                Crit::Ammo => {
+                    if crits.contains(&Crit::CaseII) {
+                        // TODO: track the one poitn of damage for when we handle explosive equipment
+                        numcrits += roll_num_crits(false); // hardened doesn't apply for internal damage
+                    } else if crits.contains(&Crit::Case) {
+                        engine_hits += crits.iter().filter(|&c| *c == Crit::Engine).count();
+                        gyro_hits += crits.iter().filter(|&c| *c == Crit::Gyro).count();
+                        if engine_hits >= 3 || gyro_hits >= required_gyro_hits {
+                            deaths += 1;
+                        }
+
+                        continue 'iteration;
+                    } else {
+                        deaths += 1;
+                        continue 'iteration;
+                    }
+                }
+                Crit::Explosive(_) => todo!(),
+                _ => (),
+            }
+
+            numcrits -= 1;
         }
 
-        let mut location_crits: Vec<Crit> = mech.ct_crits.to_vec();
-        check_crit_roll(
-            result,
-            mech.clan_case,
-            mech.heavy_duty_gyro,
-            &mut location_crits,
-            false,
-            false,
-            &mut deaths,
-        );
+        if engine_hits >= 3 || gyro_hits >= required_gyro_hits {
+            deaths += 1;
+        }
     }
 
     let mut floating_deaths = 0;
-    for _i in 0..1000000 {
-        let mut left_side = false;
-        let mut right_side = false;
-        let mut location_crits = match two_d_six() {
-            2 | 7 => mech.ct_crits.to_vec(),
-            3 | 4 => {
-                right_side = true;
-                mech.ra_crits.to_vec()
-            }
-            5 => {
-                right_side = true;
-                mech.rl_crits.to_vec()
-            }
-            6 => mech.rt_crits.to_vec(),
-            8 => mech.lt_crits.to_vec(),
-            9 => {
-                left_side = true;
-                mech.ll_crits.to_vec()
-            }
-            10 | 11 => {
-                left_side = true;
-                mech.la_crits.to_vec()
-            }
-            12 => mech.head_crits.to_vec(),
-            _ => panic!("2d6 somehow was not between 2 and 12"),
-        };
-
-        let mut result = two_d_six();
-        if mech.hardened {
-            result = cmp::max(result - 2, 2);
-        }
-
-        let mut torso_survives = false;
-        if left_side || right_side {
-            let mut engine_crits = 0;
-            let side_crits = if left_side {
-                mech.lt_crits.to_vec()
-            } else {
-                mech.rt_crits.to_vec()
+    'iteration: for _i in 0..1_000_000 {
+        let mut trialmech = mech.clone();
+        let mut numcrits = roll_num_crits(trialmech.hardened);
+        let mut engine_hits = 0;
+        let mut gyro_hits = 0;
+        while numcrits > 0 {
+            let location = get_location(trialmech.config == Config::Tripod);
+            let crits = match location {
+                Location::Head => &mut trialmech.head_crits,
+                Location::CenterTorso => &mut trialmech.ct_crits,
+                Location::LeftTorso => &mut trialmech.lt_crits,
+                Location::RightTorso => &mut trialmech.rt_crits,
+                Location::LeftArm => &mut trialmech.la_crits,
+                Location::RightArm => &mut trialmech.ra_crits,
+                Location::LeftLeg => &mut trialmech.ll_crits,
+                Location::RightLeg => &mut trialmech.rl_crits,
+                Location::CenterLeg => &mut trialmech.cl_crits,
             };
 
-            for crit in side_crits {
-                if crit == Crit::Engine {
-                    engine_crits += 1;
+            let (i, chosen_crit) = match crits.iter_mut().enumerate().choose(&mut rng) {
+                Some(x) => x,
+                None => break, // if we run out of crits then we're done checking, break out and see if we hit the engine/gyro threshold
+            };
+
+            let chosen_crit = *chosen_crit;
+            crits.remove(i);
+
+            match chosen_crit {
+                Crit::Engine => engine_hits += 1,
+                Crit::Cockpit => {
+                    floating_deaths += 1;
+                    continue 'iteration;
                 }
+                Crit::Gyro => gyro_hits += 1,
+                Crit::Ammo => {
+                    if crits.contains(&Crit::CaseII) {
+                        // TODO: track the one poitn of damage for when we handle explosive equipment
+                        numcrits += roll_num_crits(false); // hardened doesn't apply for internal damage
+                    } else if crits.contains(&Crit::Case) {
+                        engine_hits += crits.iter().filter(|&c| *c == Crit::Engine).count();
+                        gyro_hits += crits.iter().filter(|&c| *c == Crit::Gyro).count();
+                        if engine_hits >= 3 || gyro_hits >= required_gyro_hits {
+                            floating_deaths += 1;
+                        }
+
+                        continue 'iteration;
+                    } else {
+                        match location {
+                            Location::LeftArm | Location::LeftLeg => {
+                                if trialmech.lt_crits.contains(&Crit::CaseII) {
+                                    // TODO: track the one point of damage for when we handle explosive equipment
+                                    numcrits += roll_num_crits(false); // hardened doesn't apply for internal damage
+                                } else if trialmech.lt_crits.contains(&Crit::Case) {
+                                    engine_hits += trialmech
+                                        .lt_crits
+                                        .iter()
+                                        .filter(|&c| *c == Crit::Engine)
+                                        .count();
+                                    gyro_hits += trialmech
+                                        .lt_crits
+                                        .iter()
+                                        .filter(|&c| *c == Crit::Gyro)
+                                        .count();
+                                    if engine_hits >= 3 || gyro_hits >= required_gyro_hits {
+                                        floating_deaths += 1;
+                                    }
+
+                                    continue 'iteration;
+                                } else {
+                                    floating_deaths += 1;
+                                    continue 'iteration;
+                                }
+                            }
+                            Location::RightArm | Location::RightLeg => {
+                                if trialmech.rt_crits.contains(&Crit::CaseII) {
+                                    // TODO: track the one point of damage for when we handle explosive equipment
+                                    numcrits += roll_num_crits(false); // hardened doesn't apply for internal damage
+                                } else if trialmech.lt_crits.contains(&Crit::Case) {
+                                    let torso_engine_hits = trialmech
+                                        .rt_crits
+                                        .iter()
+                                        .filter(|&c| *c == Crit::Engine)
+                                        .count();
+                                    let torso_gyro_hits = trialmech
+                                        .rt_crits
+                                        .iter()
+                                        .filter(|&c| *c == Crit::Gyro)
+                                        .count();
+                                    if torso_engine_hits + engine_hits >= 3
+                                        || torso_gyro_hits + gyro_hits >= required_gyro_hits
+                                    {
+                                        floating_deaths += 1;
+                                    }
+
+                                    continue 'iteration;
+                                } else {
+                                    floating_deaths += 1;
+                                    continue 'iteration;
+                                }
+                            }
+                            _ => {
+                                floating_deaths += 1;
+                                continue 'iteration;
+                            }
+                        }
+                    }
+                }
+                Crit::Explosive(_) => todo!(),
+                _ => (),
             }
 
-            if engine_crits < 3 {
-                torso_survives = true;
-            }
+            numcrits -= 1;
         }
 
-        check_crit_roll(
-            result,
-            mech.clan_case,
-            mech.heavy_duty_gyro,
-            &mut location_crits,
-            torso_survives,
-            false,
-            &mut floating_deaths,
-        );
+        if engine_hits >= 3 || gyro_hits >= required_gyro_hits {
+            deaths += 1;
+        }
     }
 
     let regular_percentage = deaths as f32 / 1000000.0 * 100.0;
@@ -313,131 +420,9 @@ fn main() {
     );
 }
 
-fn check_crit_roll(
-    result: u8,
-    clan_case: bool,
-    heavy_duty_gyro: bool,
-    location_crits: &mut Vec<Crit>,
-    torso_survives: bool,
-    from_caseii: bool,
-    deaths: &mut i32,
-) {
-    match result {
-        2..=7 => (),
-        8..=9 => {
-            if from_caseii {
-                if let 2..=7 = two_d_six() {
-                    check_single_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    )
-                }
-            } else {
-                check_single_crit(
-                    clan_case,
-                    heavy_duty_gyro,
-                    location_crits,
-                    torso_survives,
-                    deaths,
-                );
-            }
-        }
-        10..=11 => {
-            if from_caseii {
-                let mut num_crits = 0;
-                if let 2..=7 = two_d_six() {
-                    num_crits += 1
-                }
-                if let 2..=7 = two_d_six() {
-                    num_crits += 1
-                }
-
-                match num_crits {
-                    1 => check_single_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    ),
-                    2 => check_double_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    ),
-                    _ => (),
-                }
-            } else {
-                check_double_crit(
-                    clan_case,
-                    heavy_duty_gyro,
-                    location_crits,
-                    torso_survives,
-                    deaths,
-                );
-            }
-        }
-        12 => {
-            if from_caseii {
-                let mut num_crits = 0;
-                if let 2..=7 = two_d_six() {
-                    num_crits += 1
-                }
-                if let 2..=7 = two_d_six() {
-                    num_crits += 1
-                }
-                if let 2..=7 = two_d_six() {
-                    num_crits += 1
-                }
-
-                match num_crits {
-                    1 => check_single_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    ),
-                    2 => check_double_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    ),
-                    3 => check_triple_crit(
-                        clan_case,
-                        heavy_duty_gyro,
-                        location_crits,
-                        torso_survives,
-                        deaths,
-                    ),
-                    _ => (),
-                }
-            } else {
-                check_triple_crit(
-                    clan_case,
-                    heavy_duty_gyro,
-                    location_crits,
-                    torso_survives,
-                    deaths,
-                );
-            }
-        }
-        _ => panic!("2d6 somehow was not between 2 and 12"),
-    }
-}
-
 fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
     match line.as_str() {
-        "-empty-" => (),
-        "endo-steel" => (),
-        "clan endo steel" => (), // TODO, can I do some sort of pattern here (and below for the line contains stuff) so I don't need so many cases?
+        "-empty-" => (), // TODO: need a mechanism to consider endo and the like to also be non-crits
         "" => return ControlFlow::Break(()),
         _ => {
             if line.contains("ammo") {
@@ -471,380 +456,19 @@ fn parse_crits(line: String, crits: &mut Vec<Crit>) -> ControlFlow<()> {
     ControlFlow::Continue(())
 }
 
-fn check_single_crit(
-    clan_case: bool,
-    heavy_duty_gyro: bool,
-    location_crits: &mut Vec<Crit>,
-    torso_survives: bool,
-    deaths: &mut i32,
-) {
-    if location_crits.is_empty() {
-        return;
+fn roll_num_crits(is_hardened: bool) -> i32 {
+    let mut result = two_d_six();
+    if is_hardened {
+        result = cmp::max(2, result - 2);
     }
 
-    let mut rng = rand::thread_rng();
-    let chosen_crit = location_crits.choose(&mut rng).unwrap();
-    let chosen_crit = *chosen_crit;
-    if chosen_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if chosen_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-            }
-        } else if torso_survives {
-            // no need to do anything
-        } else {
-            *deaths += 1;
-        }
-    }
-}
-
-fn check_double_crit(
-    clan_case: bool,
-    heavy_duty_gyro: bool,
-    location_crits: &mut Vec<Crit>,
-    torso_survives: bool,
-    deaths: &mut i32,
-) {
-    if location_crits.len() < 2 {
-        check_single_crit(
-            clan_case,
-            heavy_duty_gyro,
-            location_crits,
-            torso_survives,
-            deaths,
-        );
-        return;
-    }
-
-    let mut rng = rand::thread_rng();
-    let (i, first_crit) = location_crits
-        .iter_mut()
-        .enumerate()
-        .choose(&mut rng)
-        .unwrap();
-    let first_crit = *first_crit;
-    location_crits.remove(i);
-
-    if first_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if first_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-                return;
-            }
-        } else if torso_survives {
-            return;
-        } else {
-            *deaths += 1;
-            return;
-        }
-    }
-
-    let mut gyros = 0;
-    let mut engines = 0;
-    match first_crit {
-        Crit::Engine => engines += 1,
-        Crit::Gyro => gyros += 1,
-        _ => (),
-    }
-
-    let (i, second_crit) = location_crits
-        .iter_mut()
-        .enumerate()
-        .choose(&mut rng)
-        .unwrap();
-    let second_crit = *second_crit;
-    location_crits.remove(i);
-
-    if second_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if second_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-            return;
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-                return;
-            }
-        } else if torso_survives {
-            return;
-        } else {
-            *deaths += 1;
-            return;
-        }
-    }
-
-    match second_crit {
-        Crit::Engine => engines += 1,
-        Crit::Gyro => gyros += 1,
-        _ => (),
-    }
-
-    if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-        *deaths += 1;
-    }
-}
-
-fn check_triple_crit(
-    clan_case: bool,
-    heavy_duty_gyro: bool,
-    location_crits: &mut Vec<Crit>,
-    torso_survives: bool,
-    deaths: &mut i32,
-) {
-    if location_crits.len() < 3 {
-        check_double_crit(
-            clan_case,
-            heavy_duty_gyro,
-            location_crits,
-            torso_survives,
-            deaths,
-        );
-        return;
-    }
-
-    let mut rng = rand::thread_rng();
-    let (i, first_crit) = location_crits
-        .iter_mut()
-        .enumerate()
-        .choose(&mut rng)
-        .unwrap();
-    let first_crit = *first_crit;
-    location_crits.remove(i);
-
-    if first_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if first_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-                return;
-            }
-        } else if torso_survives {
-            return;
-        } else {
-            *deaths += 1;
-            return;
-        }
-    }
-
-    let mut gyros = 0;
-    let mut engines = 0;
-    match first_crit {
-        Crit::Engine => engines += 1,
-        Crit::Gyro => gyros += 1,
-        _ => (),
-    }
-
-    let (i, second_crit) = location_crits
-        .iter_mut()
-        .enumerate()
-        .choose(&mut rng)
-        .unwrap();
-    let second_crit = *second_crit;
-    location_crits.remove(i);
-
-    if second_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if second_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-                return;
-            }
-        } else if torso_survives {
-            return;
-        } else {
-            *deaths += 1;
-            return;
-        }
-    }
-
-    match second_crit {
-        Crit::Engine => engines += 1,
-        Crit::Gyro => gyros += 1,
-        _ => (),
-    }
-
-    let (i, third_crit) = location_crits
-        .iter_mut()
-        .enumerate()
-        .choose(&mut rng)
-        .unwrap();
-    let third_crit = *third_crit;
-    location_crits.remove(i);
-
-    if third_crit == Crit::Cockpit {
-        *deaths += 1;
-        return;
-    }
-
-    if third_crit == Crit::Ammo {
-        if location_crits.contains(&Crit::CaseII) {
-            let result = two_d_six();
-            check_crit_roll(
-                result,
-                clan_case,
-                heavy_duty_gyro,
-                location_crits,
-                torso_survives,
-                true,
-                deaths,
-            );
-        } else if clan_case || location_crits.contains(&Crit::Case) {
-            let mut engines = 0;
-            let mut gyros = 0;
-            for crit in location_crits.as_slice() {
-                match crit {
-                    Crit::Engine => engines += 1,
-                    Crit::Gyro => gyros += 1,
-                    _ => (),
-                }
-            }
-
-            if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-                *deaths += 1;
-                return;
-            }
-        } else if torso_survives {
-            return;
-        } else {
-            *deaths += 1;
-            return;
-        }
-    }
-
-    match third_crit {
-        Crit::Engine => engines += 1,
-        Crit::Gyro => gyros += 1,
-        _ => (),
-    }
-
-    if engines >= 3 || (!heavy_duty_gyro && gyros >= 2) || gyros >= 3 {
-        *deaths += 1;
-    }
+    return match result {
+        2..=7 => 0,
+        8 | 9 => 1,
+        10 | 11 => 2,
+        12 => 3,
+        _ => panic!("2d66 somehow was not between 2 and 12"),
+    };
 }
 
 fn get_location(is_tripod: bool) -> Location {
@@ -866,7 +490,7 @@ fn get_location(is_tripod: bool) -> Location {
             1 | 2 => location = Location::RightLeg,
             3 | 4 => location = Location::CenterLeg,
             5 | 6 => location = Location::LeftLeg,
-            _ => panic!("1d66 somehow was not between 1 and 6")
+            _ => panic!("1d6 somehow was not between 1 and 6"),
         }
     }
 
